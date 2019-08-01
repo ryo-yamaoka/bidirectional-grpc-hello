@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
 	"local/grpc/hello"
 
+	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"google.golang.org/grpc"
 )
 
@@ -60,8 +63,31 @@ func (s helloService) GreetStream(stream hello.HelloService_GreetStreamServer) e
 }
 
 func main() {
-	port, _ := net.Listen("tcp", ":25252")
 	s := grpc.NewServer()
 	hello.RegisterHelloServiceServer(s, &helloService{})
-	s.Serve(port)
+	port, _ := net.Listen("tcp", ":25252")
+
+	flag.Parse()
+	args := flag.Args()
+	switch {
+	case len(args) == 0:
+		s.Serve(port)
+	case args[0] == "web":
+		gRPCWebMode(s, port)
+	default:
+		fmt.Println("Unknown mode")
+	}
+}
+
+func gRPCWebMode(s *grpc.Server, port net.Listener) {
+	wrappedServer := grpcweb.WrapServer(
+		s,
+		grpcweb.WithOriginFunc(func(_ string) bool { return true }),
+	)
+
+	hs := http.Server{
+		Handler: http.HandlerFunc(wrappedServer.ServeHTTP),
+	}
+
+	hs.Serve(port)
 }
